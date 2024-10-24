@@ -70,17 +70,19 @@ async def create_composite(payload: CompositeIn, response: Response):
         f'<{composite_url}>; rel="self", <{URL_PREFIX}/composites/>; rel="collection"'
     )
 
+    breeder_response_json = breeder_response.json()
+
     # Include link sections in the response body
     response_data = CompositeOut(
         breeders=BreederListResponse(
             data=[
                 BreederOut(
-                    id=breeder_response.json().get("id"),
-                    name=breeder_response.json().get("name"),
-                    breeder_city=breeder_response.json().get("breeder_city"),
-                    breeder_country=breeder_response.json().get("breeder_country"),
-                    price_level=breeder_response.json().get("price_level"),
-                    breeder_address=breeder_response.json().get("breeder_address"),
+                    id=breeder_response_json.get("id"),
+                    name=breeder_response_json.get("name"),
+                    breeder_city=breeder_response_json.get("breeder_city"),
+                    breeder_country=breeder_response_json.get("breeder_country"),
+                    price_level=breeder_response_json.get("price_level"),
+                    breeder_address=breeder_response_json.get("breeder_address"),
                 )
             ],
             links=[
