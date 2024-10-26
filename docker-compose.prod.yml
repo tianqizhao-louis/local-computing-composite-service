@@ -1,47 +1,20 @@
 services:
-  # movie_service:
-  #   build: ./movie-service
-  #   command: uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-  #   volumes:
-  #     - ./movie-service/:/app/
-  #   ports:
-  #     - 8001:8000
-  #   environment:
-  #     - DATABASE_URI=postgresql://movie_db_username:movie_db_password@movie_db/movie_db_dev
-  #     - CAST_SERVICE_HOST_URL=http://cast_service:8000/api/v1/casts/
-  #   depends_on:
-  #     - movie_db
-
-  # movie_db:
-  #   image: postgres:12.1-alpine
-  #   volumes:
-  #     - postgres_data_movie:/var/lib/postgresql/data/
-  #   environment:
-  #     - POSTGRES_USER=movie_db_username
-  #     - POSTGRES_PASSWORD=movie_db_password
-  #     - POSTGRES_DB=movie_db_dev
-  
-  breeder_service:
-    build: ./breeder-service
-    command: uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-    volumes:
-      - ./breeder-service/:/app/
+  composite_service:
+    build: 
+      context: ./composite-service
+      dockerfile: prod.Dockerfile
+    container_name: composite_microservice
+    command: gunicorn -w 4 -k uvicorn.workers.UvicornWorker app.main:app -b 0.0.0.0:8000
+    # volumes:
+    #   - ./composite-service/:/app/
     ports:
-      - 8002:8000
+      - 8004:8000
     environment:
-      - DATABASE_URI=${DATABASE_URL}
-      # - CAST_SERVICE_HOST_URL=http://cast_service:8000/api/v1/casts/
-    # depends_on:
-    #   - breeder_db
-
-  # breeder_db:
-  #   image: postgres:12.1-alpine
-  #   volumes:
-  #     - postgres_data_breeder:/var/lib/postgresql/data/
-  #   environment:
-  #     - POSTGRES_USER=breeder_db_username
-  #     - POSTGRES_PASSWORD=breeder_db_password
-  #     - POSTGRES_DB=breeder_db_dev
+      # - DATABASE_URI=${DATABASE_URL}
+      - BREEDER_SERVICE_URL=${CLOUD_BREEDER_SERVICE_URL}
+      - PET_SERVICE_URL=${CLOUD_PET_SERVICE_URL}
+      - PYTHONPATH=/app
+      - URL_PREFIX=${URL_PREFIX}
 
   nginx:
     image: nginx:latest
@@ -51,7 +24,7 @@ services:
       - ./nginx_config.conf:/etc/nginx/conf.d/default.conf
     depends_on:
       # - movie_service
-      - breeder_service
+      - composite_service
 
 # volumes:
   # postgres_data_movie:
