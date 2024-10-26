@@ -16,7 +16,7 @@ then
 
     # Build and run the docker-compose services
     echo "Building and starting services with docker-compose..."
-    docker-compose -f docker-compose.prod.yml --env-file prod.env up --build -d
+    docker compose -f docker-compose.prod.yml --env-file prod.env up --build -d
 else
     echo "Docker system prune cancelled."
 fi
