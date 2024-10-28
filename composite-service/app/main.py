@@ -24,13 +24,14 @@ app = FastAPI(
 )
 
 origins = [
-    "http://localhost",
-    "http://localhost:3000",
-    "http://34.120.15.105",
-    "http://34.72.253.184:8000", #breeder
-    "http://35.232.191.145:8002", #pets
-    "http://34.72.253.184",
-    "http://35.232.191.145",
+    "*",
+    # "http://localhost",
+    # "http://localhost:3000",
+    # "http://34.120.15.105",
+    # "http://34.72.253.184:8000", #breeder
+    # "http://35.232.191.145:8002", #pets
+    # "http://34.72.253.184",
+    # "http://35.232.191.145",
 ]
 
 app.add_middleware(
