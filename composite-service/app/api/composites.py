@@ -90,7 +90,7 @@ async def create_composite(payload: CompositeIn, response: Response):
                 Link(rel="collection", href=f"{URL_PREFIX}/composites/"),
             ],
         ),
-        pets=PetListResponse(
+        pets = PetListResponse(
             # iterate
             data=[
                 PetOut(
@@ -99,11 +99,12 @@ async def create_composite(payload: CompositeIn, response: Response):
                     type=pet["type"],
                     price=pet["price"],
                     breeder_id=pet["breeder_id"],
+                    image_url=pet.get("image_url"),  # Include image_url here
                     links=pet["links"],
                 )
                 for pet in pet_responses
             ],
-            links= [
+            links=[
                 Link(rel="self", href=f"{URL_PREFIX}/composites/"),
                 Link(rel="collection", href=f"{URL_PREFIX}/composites/"),
             ]
