@@ -38,10 +38,12 @@ class PetInAdd(BaseModel):
     name: str
     type: str
     price: float
+    image_url: Optional[str] = None  # Add image_url to allow specifying it on creation
 
 
 class PetOut(PetIn):
     id: str
+    image_url: Optional[str] = None  # Explicitly add image_url to the output model
     links: Optional[List[Link]] = None
 
 
