@@ -5,6 +5,9 @@ from app.api.composites import composites
 from app.api.middleware import LoggingMiddleware
 from contextlib import asynccontextmanager
 
+# code for graphql
+from strawberry.fastapi import GraphQLRouter
+from app.api.composites import schema
 
 # @asynccontextmanager
 # async def lifespan(app: FastAPI):
@@ -45,3 +48,7 @@ app.add_middleware(
 app.add_middleware(LoggingMiddleware)
 
 app.include_router(composites, prefix="/api/v1/composites", tags=["composites"])
+
+# Add GraphQL route
+graphql_app = GraphQLRouter(schema)
+app.include_router(graphql_app, prefix="/api/v1/graphql", tags=["graphql"])

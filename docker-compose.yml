@@ -11,6 +11,7 @@ services:
       # - DATABASE_URI=${DATABASE_URL}
       - BREEDER_SERVICE_URL=${LOCAL_BREEDER_SERVICE_URL}
       - PET_SERVICE_URL=${LOCAL_PET_SERVICE_URL}
+      - CUSTOMER_SERVICE_URL=${LOCAL_CUSTOMER_SERVICE_URL}
       - PYTHONPATH=/app
       - URL_PREFIX=http://localhost:8084/api/v1
       # - CAST_SERVICE_HOST_URL=http://cast_service:8000/api/v1/casts/
@@ -31,12 +32,11 @@ services:
     image: nginx:latest
     container_name: composite_nginx
     ports:
-      - "8084:8080"
+      - '8084:8080'
     volumes:
       - ./nginx_config.conf:/etc/nginx/conf.d/default.conf
     depends_on:
       - composite_service
-
 # volumes:
-  # postgres_data_movie:
-  # postgres_data_breeder:
+# postgres_data_movie:
+# postgres_data_breeder:
