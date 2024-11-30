@@ -12,6 +12,9 @@ services:
       - BREEDER_SERVICE_URL=${LOCAL_BREEDER_SERVICE_URL}
       - PET_SERVICE_URL=${LOCAL_PET_SERVICE_URL}
       - CUSTOMER_SERVICE_URL=${LOCAL_CUSTOMER_SERVICE_URL}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - JWT_ALGORITHM=${JWT_ALGORITHM}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
       - PYTHONPATH=/app
       - URL_PREFIX=http://localhost:8084/api/v1
       # - CAST_SERVICE_HOST_URL=http://cast_service:8000/api/v1/casts/
@@ -32,7 +35,7 @@ services:
     image: nginx:latest
     container_name: composite_nginx
     ports:
-      - '8084:8080'
+      - "8084:8080"
     volumes:
       - ./nginx_config.conf:/etc/nginx/conf.d/default.conf
     depends_on:

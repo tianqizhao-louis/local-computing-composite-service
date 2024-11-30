@@ -1,5 +1,13 @@
 from typing import List, Dict, Optional
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Response
+from fastapi import (
+    APIRouter,
+    HTTPException,
+    Depends,
+    BackgroundTasks,
+    Response,
+    Request,
+)
+from fastapi.security import HTTPBearer
 from app.api.models import (
     BreederIn,
     BreederOut,
@@ -24,11 +32,14 @@ from app.api.service import (
 
 import httpx
 import os
+import jwt
+import time
 
-import strawberry 
+import strawberry
 from strawberry.types import Info
 
 composites = APIRouter()
+
 URL_PREFIX = os.getenv("URL_PREFIX")
 
 
@@ -94,7 +105,7 @@ async def create_composite(payload: CompositeIn, response: Response):
                 Link(rel="collection", href=f"{URL_PREFIX}/composites/"),
             ],
         ),
-        pets = PetListResponse(
+        pets=PetListResponse(
             # iterate
             data=[
                 PetOut(
@@ -111,7 +122,7 @@ async def create_composite(payload: CompositeIn, response: Response):
             links=[
                 Link(rel="self", href=f"{URL_PREFIX}/composites/"),
                 Link(rel="collection", href=f"{URL_PREFIX}/composites/"),
-            ]
+            ],
         ),
         links=[
             Link(rel="self", href=f"{URL_PREFIX}/composites/"),
@@ -296,12 +307,14 @@ class Customer:
     name: str
     email: str
 
+
 @strawberry.type
 class WaitlistEntry:
     id: str
     consumer: Customer
     pet_id: str
     breeder_id: str
+
 
 @strawberry.type
 class Pet:
@@ -313,6 +326,7 @@ class Pet:
     image_url: Optional[str]
     waitlist: List[WaitlistEntry]
 
+
 @strawberry.type
 class Breeder:
     id: str
@@ -323,6 +337,7 @@ class Breeder:
     price_level: Optional[str]
     breeder_address: Optional[str]
     pets: List[Pet]
+
 
 @strawberry.type
 class Query:
@@ -340,20 +355,27 @@ class Query:
             try:
                 pets_response_data = pets_response.json()
                 pets_data = [
-                    pet for pet in pets_response_data.get("data", [])
+                    pet
+                    for pet in pets_response_data.get("data", [])
                     if pet.get("breeder_id") == breeder_id
                 ]
             except ValueError:
-                raise Exception(f"Invalid JSON response from pet service: {pets_response.text}")
+                raise Exception(
+                    f"Invalid JSON response from pet service: {pets_response.text}"
+                )
 
             # Fetch waitlist data for the breeder
-            waitlist_response = await client.get(f"{CUSTOMER_SERVICE_URL}/breeder/{breeder_id}/waitlist")
+            waitlist_response = await client.get(
+                f"{CUSTOMER_SERVICE_URL}/breeder/{breeder_id}/waitlist"
+            )
             try:
                 waitlist_data = waitlist_response.json()
                 if not isinstance(waitlist_data, list):
                     raise Exception(f"Unexpected waitlist data format: {waitlist_data}")
             except ValueError:
-                raise Exception(f"Invalid JSON response from waitlist service: {waitlist_response.text}")
+                raise Exception(
+                    f"Invalid JSON response from waitlist service: {waitlist_response.text}"
+                )
 
             # Map waitlist entries to pets
             pet_waitlists = {}
@@ -366,12 +388,10 @@ class Query:
                         WaitlistEntry(
                             id=f"{breeder_id}_{pet_id}_{entry['id']}",
                             consumer=Customer(
-                                id=entry["id"],
-                                name=entry["name"],
-                                email=entry["email"]
+                                id=entry["id"], name=entry["name"], email=entry["email"]
                             ),
                             pet_id=pet_id,
-                            breeder_id=breeder_id
+                            breeder_id=breeder_id,
                         )
                     )
 
@@ -384,7 +404,7 @@ class Query:
                     price=pet.get("price"),
                     image_url=pet.get("image_url"),
                     breeder_id=pet["breeder_id"],
-                    waitlist=pet_waitlists.get(pet["id"], [])
+                    waitlist=pet_waitlists.get(pet["id"], []),
                 )
                 for pet in pets_data
             ]
@@ -398,9 +418,8 @@ class Query:
                 breeder_country=breeder_data["breeder_country"],
                 price_level=breeder_data.get("price_level"),
                 breeder_address=breeder_data.get("breeder_address"),
-                pets=pets_with_waitlist
+                pets=pets_with_waitlist,
             )
-
 
 
 schema = strawberry.Schema(Query)

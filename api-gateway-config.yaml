@@ -1,0 +1,55 @@
+swagger: "2.0"
+info:
+  title: "Paws and Tails API"
+  version: "1.0.0"
+host: "paws.apigateway.prime-victory-437119-p7.cloud.goog"
+schemes:
+  - https
+paths:
+  "/composite":
+    get:
+      description: "Composite Service"
+      operationId: "composite"
+      x-google-backend:
+        address: https://composite-661348528801.us-central1.run.app/api/v1/composites
+      responses:
+        200:
+          description: "Success"
+  "/composite/openapi.json":
+    get:
+      description: "Composite Service OpenAPI"
+      operationId: "composite-openapi"
+      x-google-backend:
+        address: https://composite-661348528801.us-central1.run.app/api/v1/composites/openapi.json
+      responses:
+        200:
+          description: "Success"
+    # post:
+    #   x-google-backend:
+    #     address: https://CLOUD_RUN_URL
+    #     jwt_audience: CLOUD_RUN_URL
+    #   security:
+    #     - bearerAuth: []
+    #   responses:
+    #     200:
+    #       description: "Cloud Run POST Response"
+  # /compute:
+  #   get:
+  #     x-google-backend:
+  #       address: http://STATIC_IP_OF_COMPUTE_ENGINE:8000
+  #     responses:
+  #       200:
+  #         description: "Compute Engine GET Response"
+  #   post:
+  #     x-google-backend:
+  #       address: http://STATIC_IP_OF_COMPUTE_ENGINE:8000
+  #     security:
+  #       - bearerAuth: []
+  #     responses:
+  #       200:
+  #         description: "Compute Engine POST Response"
+# securityDefinitions:
+#   bearerAuth:
+#     type: apiKey
+#     name: Authorization
+#     in: header
