@@ -1,5 +1,5 @@
 from typing import List, Dict, Optional
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Response
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Response, Request
 from app.api.models import (
     BreederIn,
     BreederOut,
@@ -27,6 +27,10 @@ import os
 
 import strawberry 
 from strawberry.types import Info
+
+import boto3
+import json
+
 
 composites = APIRouter()
 URL_PREFIX = os.getenv("URL_PREFIX")
@@ -404,3 +408,102 @@ class Query:
 
 
 schema = strawberry.Schema(Query)
+
+# Function to Fetch Information from Individual Services
+async def get_email_data(breeder_id: str, pet_id: str, customer_id: str):
+    async with httpx.AsyncClient() as client:
+        # Get breeder information
+        try:
+            breeder_response = await client.get(f"{BREEDER_SERVICE_URL}/{breeder_id}")
+            breeder_response.raise_for_status()
+            breeder_data = breeder_response.json()
+        except httpx.RequestError as e:
+            raise HTTPException(status_code=500, detail=f"Error fetching breeder data: {str(e)}")
+        except httpx.HTTPStatusError as e:
+            raise HTTPException(status_code=breeder_response.status_code, detail=f"Breeder not found: {str(e)}")
+
+        # Get pet information
+        try:
+            pet_response = await client.get(f"{PET_SERVICE_URL}/{pet_id}")
+            pet_response.raise_for_status()
+            pet_data = pet_response.json()
+        except httpx.RequestError as e:
+            raise HTTPException(status_code=500, detail=f"Error fetching pet data: {str(e)}")
+        except httpx.HTTPStatusError as e:
+            raise HTTPException(status_code=pet_response.status_code, detail=f"Pet not found: {str(e)}")
+
+        # Get customer information
+        try:
+            customer_response = await client.get(f"{CUSTOMER_SERVICE_URL}/{customer_id}")
+            customer_response.raise_for_status()
+            customer_data = customer_response.json()
+        except httpx.RequestError as e:
+            raise HTTPException(status_code=500, detail=f"Error fetching customer data: {str(e)}")
+        except httpx.HTTPStatusError as e:
+            raise HTTPException(status_code=customer_response.status_code, detail=f"Customer not found: {str(e)}")
+
+    # Extract required information
+    email_data = {
+        "breeder_email": breeder_data.get("email"),
+        "customer_name": customer_data.get("name"),
+        "customer_email": customer_data.get("email"),
+        "pet_name": pet_data.get("name"),
+        "pet_id": pet_id,
+    }
+
+    return email_data
+
+# Composite router
+composites = APIRouter()
+
+# AWS Lambda settings
+LAMBDA_FUNCTION_NAME = os.getenv("LAMBDA_FUNCTION_NAME", "SendEmailFunction")
+AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
+
+
+# Initialize AWS Lambda client
+lambda_client = boto3.client("lambda", region_name=AWS_REGION)
+
+async def invoke_lambda(email_data: dict):
+    """Trigger the AWS Lambda function with the necessary payload."""
+    try:
+        response = lambda_client.invoke(
+            FunctionName=LAMBDA_FUNCTION_NAME,
+            InvocationType="RequestResponse",  # Synchronous execution
+            Payload=json.dumps(email_data),
+        )
+        # Parse Lambda response
+        response_payload = json.loads(response["Payload"].read())
+        return response_payload
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error invoking Lambda function: {str(e)}")
+
+
+@composites.post("/webhook", status_code=200)
+async def handle_webhook(request: Request):
+    """Handle incoming webhook from the customer server."""
+    try:
+        # Parse the webhook payload
+        event_data = await request.json()
+
+        # Validate required fields
+        breeder_id = event_data.get("breeder_id")
+        pet_id = event_data.get("pet_id")
+        customer_id = event_data.get("consumer_id")
+        if not (breeder_id and pet_id and customer_id):
+            raise HTTPException(status_code=400, detail="Missing required fields in webhook payload")
+
+        # Get necessary email data
+        email_data = await get_email_data(breeder_id, pet_id, customer_id)
+
+        # Trigger AWS Lambda function
+        lambda_response = await invoke_lambda(email_data)
+
+        return {"status": "success", "lambda_response": lambda_response}
+
+    except HTTPException as e:
+        # Re-raise known HTTP exceptions
+        raise e
+    except Exception as e:
+        # Handle unexpected errors
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
