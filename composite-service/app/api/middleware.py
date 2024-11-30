@@ -2,6 +2,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 import logging
 import time
 from fastapi import Request
+from fastapi.exceptions import HTTPException
+from app.api.auth import verify_jwt_token
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("composite-service")
@@ -27,3 +29,19 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         )
 
         return response
+
+
+class JWTMiddleware:
+    async def __call__(self, request: Request, call_next):
+        try:
+            auth_header = request.headers.get("Authorization")
+            if auth_header:
+                token = auth_header.split(" ")[1]
+                payload = verify_jwt_token(token)
+                request.state.user = payload
+            response = await call_next(request)
+            return response
+        except HTTPException as e:
+            raise e
+        except Exception as e:
+            raise HTTPException(status_code=401, detail="Invalid authentication")

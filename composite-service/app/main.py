@@ -1,8 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.composites import composites
+from app.api.auth import auth
+
 # from app.api.db import metadata, database, engine
-from app.api.middleware import LoggingMiddleware
+from app.api.middleware import LoggingMiddleware, JWTMiddleware
 from contextlib import asynccontextmanager
 
 # code for graphql
@@ -21,7 +23,7 @@ from app.api.composites import schema
 # metadata.create_all(engine)
 
 app = FastAPI(
-    openapi_url="/api/v1/composites/openapi.json", 
+    openapi_url="/api/v1/composites/openapi.json",
     docs_url="/api/v1/composites/docs",
     # lifespan=lifespan  # Use lifespan event handler
 )
@@ -46,8 +48,10 @@ app.add_middleware(
 )
 
 app.add_middleware(LoggingMiddleware)
+# app.middleware("http")(JWTMiddleware())
 
 app.include_router(composites, prefix="/api/v1/composites", tags=["composites"])
+app.include_router(auth, prefix="/api/v1/auth", tags=["auth"])
 
 # Add GraphQL route
 graphql_app = GraphQLRouter(schema)
