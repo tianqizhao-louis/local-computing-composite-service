@@ -18,6 +18,8 @@ pytest = "^8.3.3"
 pytest-asyncio = "^0.24.0"
 aiosqlite = "^0.20.0"
 gunicorn = "^23.0.0"
+strawberry-graphql = "^0.140.0"  # Add this line
+
 
 
 [build-system]
