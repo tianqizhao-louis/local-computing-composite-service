@@ -14,6 +14,9 @@ services:
       - CUSTOMER_SERVICE_URL=${LOCAL_CUSTOMER_SERVICE_URL}
       - PYTHONPATH=/app
       - URL_PREFIX=http://localhost:8084/api/v1
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}
       # - CAST_SERVICE_HOST_URL=http://cast_service:8000/api/v1/casts/
     # depends_on:
     #   - breeder_db

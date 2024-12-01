@@ -31,6 +31,9 @@ from strawberry.types import Info
 import boto3
 import json
 
+import logging
+
+
 
 composites = APIRouter()
 URL_PREFIX = os.getenv("URL_PREFIX")
@@ -411,99 +414,142 @@ schema = strawberry.Schema(Query)
 
 # Function to Fetch Information from Individual Services
 async def get_email_data(breeder_id: str, pet_id: str, customer_id: str):
+    """Fetch data from individual services asynchronously to construct the email payload."""
     async with httpx.AsyncClient() as client:
-        # Get breeder information
         try:
-            breeder_response = await client.get(f"{BREEDER_SERVICE_URL}/{breeder_id}")
+            # Fetch breeder information
+            breeder_url = f"{BREEDER_SERVICE_URL}/{breeder_id}/"
+            logging.debug(f"Fetching breeder information from: {breeder_url}")
+            breeder_response = await client.get(breeder_url)
             breeder_response.raise_for_status()
             breeder_data = breeder_response.json()
-        except httpx.RequestError as e:
-            raise HTTPException(status_code=500, detail=f"Error fetching breeder data: {str(e)}")
-        except httpx.HTTPStatusError as e:
-            raise HTTPException(status_code=breeder_response.status_code, detail=f"Breeder not found: {str(e)}")
+            logging.debug(f"Breeder data: {breeder_data}")
 
-        # Get pet information
-        try:
-            pet_response = await client.get(f"{PET_SERVICE_URL}/{pet_id}")
+            # Fetch pet information
+            pet_url = f"{PET_SERVICE_URL}/{pet_id}/"
+            logging.debug(f"Fetching pet information from: {pet_url}")
+            pet_response = await client.get(pet_url)
             pet_response.raise_for_status()
             pet_data = pet_response.json()
-        except httpx.RequestError as e:
-            raise HTTPException(status_code=500, detail=f"Error fetching pet data: {str(e)}")
-        except httpx.HTTPStatusError as e:
-            raise HTTPException(status_code=pet_response.status_code, detail=f"Pet not found: {str(e)}")
+            logging.debug(f"Pet data: {pet_data}")
 
-        # Get customer information
-        try:
-            customer_response = await client.get(f"{CUSTOMER_SERVICE_URL}/{customer_id}")
+            # Fetch customer information
+            customer_url = f"{CUSTOMER_SERVICE_URL}/{customer_id}/"
+            logging.debug(f"Fetching customer information from: {customer_url}")
+            customer_response = await client.get(customer_url)
             customer_response.raise_for_status()
             customer_data = customer_response.json()
+            logging.debug(f"Customer data: {customer_data}")
+
+            # Validate the fetched data
+            breeder_email = breeder_data.get("email")
+            customer_name = customer_data.get("name")
+            customer_email = customer_data.get("email")
+            pet_name = pet_data.get("name")
+
+            if not all([breeder_email, customer_name, customer_email, pet_name]):
+                raise ValueError("Missing required data for email construction")
+
+            # Construct the email data
+            email_data = {
+                "breeder_email": breeder_email,
+                "customer_name": customer_name,
+                "customer_email": customer_email,
+                "pet_name": pet_name,
+                "pet_id": pet_id,
+            }
+            logging.debug(f"Constructed email data: {email_data}")
+            return email_data
+
         except httpx.RequestError as e:
-            raise HTTPException(status_code=500, detail=f"Error fetching customer data: {str(e)}")
+            logging.error(f"Request error while fetching data: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Error fetching data from services: {str(e)}")
         except httpx.HTTPStatusError as e:
-            raise HTTPException(status_code=customer_response.status_code, detail=f"Customer not found: {str(e)}")
-
-    # Extract required information
-    email_data = {
-        "breeder_email": breeder_data.get("email"),
-        "customer_name": customer_data.get("name"),
-        "customer_email": customer_data.get("email"),
-        "pet_name": pet_data.get("name"),
-        "pet_id": pet_id,
-    }
-
-    return email_data
-
-# Composite router
-composites = APIRouter()
+            logging.error(f"HTTP status error: {str(e)}")
+            raise HTTPException(status_code=e.response.status_code, detail=f"Service returned an error: {str(e)}")
+        except Exception as e:
+            logging.error(f"Unexpected error: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Unexpected error occurred: {str(e)}")
 
 # AWS Lambda settings
 LAMBDA_FUNCTION_NAME = os.getenv("LAMBDA_FUNCTION_NAME", "SendEmailFunction")
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 
-
 # Initialize AWS Lambda client
 lambda_client = boto3.client("lambda", region_name=AWS_REGION)
 
-async def invoke_lambda(email_data: dict):
-    """Trigger the AWS Lambda function with the necessary payload."""
+def invoke_lambda(email_data: dict):
+    """Trigger the AWS Lambda function with the necessary payload using boto3."""
     try:
+        # Wrap the email_data in a "body" key, as expected by the Lambda handler
+        payload = {
+            "body": json.dumps(email_data)  # Convert to JSON string
+        }
+
+        # Log the payload for debugging
+        logging.debug(f"Payload sent to Lambda: {payload}")
+
+        # Invoke the Lambda function synchronously
         response = lambda_client.invoke(
             FunctionName=LAMBDA_FUNCTION_NAME,
-            InvocationType="RequestResponse",  # Synchronous execution
-            Payload=json.dumps(email_data),
+            InvocationType="RequestResponse",
+            Payload=json.dumps(payload),  # Send the wrapped payload
         )
+
         # Parse Lambda response
         response_payload = json.loads(response["Payload"].read())
+        logging.debug(f"Lambda response: {response_payload}")
+
+        # Check for error in Lambda response
+        if response_payload.get("statusCode") != 200:
+            error_message = response_payload.get("body", "Unknown error")
+            logging.error(f"Lambda function error: {error_message}")
+            return {"status": "failure", "message": "Lambda function invocation failed", "details": error_message}
         return response_payload
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error invoking Lambda function: {str(e)}")
-
+        logging.error(f"Error invoking Lambda function: {str(e)}")
+        return {"status": "failure", "message": "Error invoking Lambda function", "details": str(e)}
 
 @composites.post("/webhook", status_code=200)
 async def handle_webhook(request: Request):
     """Handle incoming webhook from the customer server."""
     try:
+        logging.info("Received request to /webhook endpoint.")
         # Parse the webhook payload
         event_data = await request.json()
+        logging.debug(f"Received webhook payload: {event_data}")
 
         # Validate required fields
         breeder_id = event_data.get("breeder_id")
         pet_id = event_data.get("pet_id")
         customer_id = event_data.get("consumer_id")
-        if not (breeder_id and pet_id and customer_id):
+        if not all([breeder_id, pet_id, customer_id]):
+            logging.error("Missing required fields in webhook payload")
             raise HTTPException(status_code=400, detail="Missing required fields in webhook payload")
 
-        # Get necessary email data
+        # Fetch necessary email data
         email_data = await get_email_data(breeder_id, pet_id, customer_id)
+        logging.debug(f"Fetched email data: {email_data}")
 
+        # Validate the email data
+        required_keys = ["breeder_email", "customer_name", "customer_email", "pet_name", "pet_id"]
+        missing_keys = [key for key in required_keys if key not in email_data or not email_data[key]]
+        if missing_keys:
+            logging.error(f"Invalid email data, missing keys: {missing_keys}")
+            raise HTTPException(status_code=400, detail=f"Invalid email data, missing keys: {missing_keys}")
+        
         # Trigger AWS Lambda function
-        lambda_response = await invoke_lambda(email_data)
-
-        return {"status": "success", "lambda_response": lambda_response}
+        try:
+            lambda_response = invoke_lambda(email_data)
+            logging.debug(f"Lambda response: {lambda_response}")
+            return {"status": "success", "lambda_response": lambda_response}
+        except Exception as e:
+            logging.error(f"Error invoking Lambda function: {str(e)}")
+            return {"status": "partial_success", "message": "Webhook processed, but Lambda invocation failed", "error": str(e)}
 
     except HTTPException as e:
-        # Re-raise known HTTP exceptions
+        logging.error(f"HTTP Exception: {e.detail}")
         raise e
     except Exception as e:
-        # Handle unexpected errors
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        logging.error(f"Internal server error: {str(e)}")
+        return {"status": "failure", "message": "Internal server error occurred", "details": str(e)}
