@@ -17,6 +17,11 @@ services:
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
       - PYTHONPATH=/app
       - URL_PREFIX=http://localhost:8084/api/v1
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/app/private-pubsub.json
+      - GCP_PROJECT_ID=prime-victory-437119-p7
+      - REQUEST_TOPIC=breeder-info-request
+      - RESPONSE_TOPIC=breeder-info-response
+      - RESPONSE_SUBSCRIPTION_NAME=breeder-info-response-sub
       # - CAST_SERVICE_HOST_URL=http://cast_service:8000/api/v1/casts/
     # depends_on:
     #   - breeder_db
