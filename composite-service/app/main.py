@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 
 # code for graphql
 from strawberry.fastapi import GraphQLRouter
-from app.api.composites import schema
+from app.api.graphql import schema
 
 # @asynccontextmanager
 # async def lifespan(app: FastAPI):
