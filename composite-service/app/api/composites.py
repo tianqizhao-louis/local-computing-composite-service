@@ -38,6 +38,8 @@ from google.cloud.workflows.executions_v1 import Execution
 from google.cloud.workflows.executions_v1.types import executions
 from google.oauth2 import service_account
 
+from app.api.auth import get_current_user
+
 import httpx
 import os
 import logging
@@ -53,11 +55,17 @@ URL_PREFIX = os.getenv("URL_PREFIX")
 
 
 @composites.post("/", response_model=CompositeOut, status_code=201)
-async def create_composite(payload: CompositeIn, response: Response):
+async def create_composite(
+    payload: CompositeIn,
+    response: Response,
+    current_user: dict = Depends(get_current_user),
+):
     """POST is implemented asynchronously.
 
     - support operations on the sub-resources (POST)
     - support navigation paths.
+
+    Protected by Bearer
     """
 
     # Check if the breeder service is available
