@@ -1,5 +1,13 @@
 from typing import List, Dict, Optional
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Response, Request
+from fastapi import (
+    APIRouter,
+    HTTPException,
+    Depends,
+    BackgroundTasks,
+    Response,
+    Request,
+)
+from fastapi.security import HTTPBearer
 from app.api.models import (
     BreederIn,
     BreederOut,
@@ -22,26 +30,46 @@ from app.api.service import (
     CUSTOMER_SERVICE_URL,
 )
 
+# from app.api.pubsub_manager import PubSubManager
+from gcloud.aio.pubsub import PublisherClient, SubscriberClient, PubsubMessage
+from google.cloud import workflows_v1
+from google.cloud.workflows import executions_v1
+from google.cloud.workflows.executions_v1 import Execution
+from google.cloud.workflows.executions_v1.types import executions
+from google.oauth2 import service_account
+
+from app.api.auth import get_current_user
+
 import httpx
 import os
+import logging
+import asyncio
+import json
+import uuid
+import time
 
-import strawberry 
-from strawberry.types import Info
 
 import boto3
 import json
 
 
 composites = APIRouter()
+
 URL_PREFIX = os.getenv("URL_PREFIX")
 
 
 @composites.post("/", response_model=CompositeOut, status_code=201)
-async def create_composite(payload: CompositeIn, response: Response):
+async def create_composite(
+    payload: CompositeIn,
+    response: Response,
+    current_user: dict = Depends(get_current_user),
+):
     """POST is implemented asynchronously.
 
     - support operations on the sub-resources (POST)
     - support navigation paths.
+
+    Protected by Bearer
     """
 
     # Check if the breeder service is available
@@ -98,7 +126,7 @@ async def create_composite(payload: CompositeIn, response: Response):
                 Link(rel="collection", href=f"{URL_PREFIX}/composites/"),
             ],
         ),
-        pets = PetListResponse(
+        pets=PetListResponse(
             # iterate
             data=[
                 PetOut(
@@ -115,7 +143,7 @@ async def create_composite(payload: CompositeIn, response: Response):
             links=[
                 Link(rel="self", href=f"{URL_PREFIX}/composites/"),
                 Link(rel="collection", href=f"{URL_PREFIX}/composites/"),
-            ]
+            ],
         ),
         links=[
             Link(rel="self", href=f"{URL_PREFIX}/composites/"),
@@ -190,26 +218,151 @@ async def get_composites(params: CompositeFilterParams = Depends()):
         raise HTTPException(status_code=500, detail={"error": str(e)})
 
 
-@composites.get("/{id}/", response_model=BreederOut)
-async def get_breeder(id: str):
-    breeder = await db_manager.get_breeder(id)
-    if not breeder:
-        raise HTTPException(status_code=404, detail="Breeder not found")
-
-    # Include link to self and collection in the response
-    response_data = BreederOut(
-        id=breeder["id"],
-        name=breeder["name"],
-        breeder_city=breeder["breeder_city"],
-        breeder_country=breeder["breeder_country"],
-        price_level=breeder["price_level"],
-        breeder_address=breeder["breeder_address"],
-        links=[
-            Link(rel="self", href=f"{URL_PREFIX}/composites/{id}/"),
-            Link(rel="collection", href=f"{URL_PREFIX}/composites/"),
-        ],
+@composites.get("/breeders/id/{id}/")
+async def composite_get_breeder(id: str):
+    """Pub/Sub implementation for composite service"""
+    pubsub_credentials = service_account.Credentials.from_service_account_file(
+        os.getenv("GOOGLE_APPLICATION_CREDENTIALS_PUBSUB"),
+        scopes=["https://www.googleapis.com/auth/pubsub"],
     )
-    return response_data
+
+    correlation_id = str(uuid.uuid4())
+
+    async with PublisherClient(credentials=pubsub_credentials) as publisher:
+        project_name = os.getenv("GCP_PROJECT_ID")
+        request_topic = os.getenv("REQUEST_TOPIC")
+        topic_name = f"projects/{project_name}/topics/{request_topic}"
+
+        message_data = {
+            "breeder_id": id,
+            "correlation_id": correlation_id,
+        }
+        data = json.dumps(message_data).encode("utf-8")
+        message = PubsubMessage(data=data)
+        await publisher.publish(topic_name, [message])
+
+    async with SubscriberClient(credentials=pubsub_credentials) as subscriber:
+        response_sub = os.getenv("RESPONSE_SUBSCRIPTION_NAME")
+        subscription_name = f"projects/{project_name}/subscriptions/{response_sub}"
+
+        timeout = 30  # seconds
+        try:
+            start_time = asyncio.get_event_loop().time()
+            while (asyncio.get_event_loop().time() - start_time) < timeout:
+                messages = await subscriber.pull(subscription_name, max_messages=10)
+                for msg in messages:
+                    message_data = json.loads(msg.data.decode("utf-8"))
+                    if message_data.get("correlation_id") == correlation_id:
+                        await subscriber.acknowledge(subscription_name, [msg.ack_id])
+
+                        # Check if the response contains an error
+                        if "error" in message_data:
+                            error_detail = message_data["error"]
+                            if "Breeder not found" in error_detail:
+                                raise HTTPException(
+                                    status_code=404, detail=error_detail
+                                )
+                            else:
+                                raise HTTPException(
+                                    status_code=500, detail=error_detail
+                                )
+
+                        return message_data["breeder_data"]
+
+                await asyncio.sleep(1)
+
+            # Timeout reached
+            raise HTTPException(status_code=504, detail="Response timed out")
+
+        except HTTPException as e:
+            # Propagate custom HTTP exceptions
+            raise e
+        except Exception as e:
+            # Log other errors and return a 500 status code
+            logging.error(f"Error while processing Pub/Sub messages: {e}")
+            raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@composites.get("/customers/id/{id}/")
+async def composite_get_customer(id: str):
+    """Workflow implementation for composite service"""
+    try:
+        workflow_credentials = service_account.Credentials.from_service_account_file(
+            os.getenv("GOOGLE_APPLICATION_CREDENTIALS_WORKFLOW"),
+            scopes=["https://www.googleapis.com/auth/cloud-platform"],
+        )
+
+        project_name = os.getenv("GCP_PROJECT_ID")
+        location = "us-central1"
+        workflow_id = "composite-to-customer"
+
+        execution_client = executions_v1.ExecutionsAsyncClient(
+            credentials=workflow_credentials
+        )
+        workflow_client = workflows_v1.WorkflowsClient(credentials=workflow_credentials)
+        parent = workflow_client.workflow_path(project_name, location, workflow_id)
+
+        if os.getenv("FASTAPI_ENV") != "production":
+            workflow_args = {
+                "customer_id": id,
+                "customer_service_url": "https://customer-661348528801.us-central1.run.app/api/v1/customers",
+            }
+        else:
+            workflow_args = {
+                "customer_id": id,
+                "customer_service_url": CUSTOMER_SERVICE_URL,
+            }
+
+        execution = await execution_client.create_execution(
+            request={
+                "parent": parent,
+                "execution": {"argument": json.dumps(workflow_args)},
+            }
+        )
+        logging.info(f"Created execution: {execution.name}")
+
+        # Add timeout to prevent infinite loops
+        start_time = time.time()
+        timeout = 30  # 30 seconds timeout
+
+        while True:
+            execution = await execution_client.get_execution(
+                request={"name": execution.name}
+            )
+
+            if execution.state in [Execution.State.SUCCEEDED, Execution.State.FAILED]:
+                break
+
+            if time.time() - start_time > timeout:
+                raise HTTPException(
+                    status_code=408, detail="Workflow execution timed out"
+                )
+
+            await asyncio.sleep(1)  # Add delay between checks
+
+        if execution.state == Execution.State.FAILED:
+            raise HTTPException(
+                status_code=500, detail=f"Workflow execution failed: {execution.error}"
+            )
+
+        result = json.loads(execution.result)
+        if result.get("code") != 200:
+            raise HTTPException(
+                status_code=result["code"],
+                detail=result.get("message", "Unknown error"),
+            )
+
+        return result["data"]
+
+    except json.JSONDecodeError:
+        raise HTTPException(
+            status_code=500, detail="Invalid JSON response from workflow"
+        )
+    except Exception as e:
+        logging.error(f"Workflow execution error: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Workflow execution error: {str(e)}"
+        )
 
 
 @composites.put("/both/{breeder_id}/{pet_id}/", response_model=None)
@@ -292,122 +445,6 @@ async def update_breeder_and_pet(
 # # Helper function to generate breeder URL
 # def generate_breeder_url(breeder_id: str):
 #     return f"{URL_PREFIX}/composites/{breeder_id}/"
-
-
-@strawberry.type
-class Customer:
-    id: str
-    name: str
-    email: str
-
-@strawberry.type
-class WaitlistEntry:
-    id: str
-    consumer: Customer
-    pet_id: str
-    breeder_id: str
-
-@strawberry.type
-class Pet:
-    id: str
-    name: str
-    type: str
-    price: Optional[float]
-    breeder_id: str
-    image_url: Optional[str]
-    waitlist: List[WaitlistEntry]
-
-@strawberry.type
-class Breeder:
-    id: str
-    name: str
-    email: str
-    breeder_city: str
-    breeder_country: str
-    price_level: Optional[str]
-    breeder_address: Optional[str]
-    pets: List[Pet]
-
-@strawberry.type
-class Query:
-    @strawberry.field
-    async def breeder_pets_with_waitlist(self, breeder_id: str) -> Optional[Breeder]:
-        async with httpx.AsyncClient(follow_redirects=True) as client:
-            # Fetch breeder information
-            breeder_response = await client.get(f"{BREEDER_SERVICE_URL}/{breeder_id}")
-            if breeder_response.status_code != 200:
-                raise Exception("Breeder not found")
-            breeder_data = breeder_response.json()
-
-            # Fetch all pets and filter by breeder_id
-            pets_response = await client.get(f"{PET_SERVICE_URL}")
-            try:
-                pets_response_data = pets_response.json()
-                pets_data = [
-                    pet for pet in pets_response_data.get("data", [])
-                    if pet.get("breeder_id") == breeder_id
-                ]
-            except ValueError:
-                raise Exception(f"Invalid JSON response from pet service: {pets_response.text}")
-
-            # Fetch waitlist data for the breeder
-            waitlist_response = await client.get(f"{CUSTOMER_SERVICE_URL}/breeder/{breeder_id}/waitlist")
-            try:
-                waitlist_data = waitlist_response.json()
-                if not isinstance(waitlist_data, list):
-                    raise Exception(f"Unexpected waitlist data format: {waitlist_data}")
-            except ValueError:
-                raise Exception(f"Invalid JSON response from waitlist service: {waitlist_response.text}")
-
-            # Map waitlist entries to pets
-            pet_waitlists = {}
-            for entry in waitlist_data:
-                pet_id = entry.get("pet_id")
-                if pet_id:
-                    if pet_id not in pet_waitlists:
-                        pet_waitlists[pet_id] = []
-                    pet_waitlists[pet_id].append(
-                        WaitlistEntry(
-                            id=f"{breeder_id}_{pet_id}_{entry['id']}",
-                            consumer=Customer(
-                                id=entry["id"],
-                                name=entry["name"],
-                                email=entry["email"]
-                            ),
-                            pet_id=pet_id,
-                            breeder_id=breeder_id
-                        )
-                    )
-
-            # Build pet data with waitlist
-            pets_with_waitlist = [
-                Pet(
-                    id=pet["id"],
-                    name=pet["name"],
-                    type=pet["type"],
-                    price=pet.get("price"),
-                    image_url=pet.get("image_url"),
-                    breeder_id=pet["breeder_id"],
-                    waitlist=pet_waitlists.get(pet["id"], [])
-                )
-                for pet in pets_data
-            ]
-
-            # Return breeder with pets and waitlist
-            return Breeder(
-                id=breeder_data["id"],
-                name=breeder_data["name"],
-                email=breeder_data["email"],
-                breeder_city=breeder_data["breeder_city"],
-                breeder_country=breeder_data["breeder_country"],
-                price_level=breeder_data.get("price_level"),
-                breeder_address=breeder_data.get("breeder_address"),
-                pets=pets_with_waitlist
-            )
-
-
-
-schema = strawberry.Schema(Query)
 
 # Function to Fetch Information from Individual Services
 async def get_email_data(breeder_id: str, pet_id: str, customer_id: str):
@@ -527,3 +564,4 @@ async def handle_webhook(request: Request):
         raise e
     except Exception as e:
         return {"status": "failure", "message": "Internal server error occurred", "details": str(e)}
+  
