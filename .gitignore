@@ -166,4 +166,4 @@ cython_debug/
 
 test.db
 
-private-pubsub.json
+private-*.json

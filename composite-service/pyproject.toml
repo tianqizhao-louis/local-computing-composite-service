@@ -21,6 +21,7 @@ gunicorn = "^23.0.0"
 strawberry-graphql = "^0.140.0"  # Add this line
 pyjwt = "^2.10.1"
 gcloud-aio-pubsub = "^6.0.1"
+google-cloud-workflows = "^1.15.1"
 
 
 
