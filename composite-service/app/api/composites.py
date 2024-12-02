@@ -39,7 +39,7 @@ from google.cloud.workflows.executions_v1.types import executions
 from google.oauth2 import service_account
 
 from app.api.auth import get_current_user
-
+from app.api.middleware import get_correlation_id
 import httpx
 import os
 import logging
@@ -47,10 +47,7 @@ import asyncio
 import json
 import uuid
 import time
-
-
 import boto3
-import json
 
 
 composites = APIRouter()
@@ -61,6 +58,7 @@ URL_PREFIX = os.getenv("URL_PREFIX")
 @composites.post("/", response_model=CompositeOut, status_code=201)
 async def create_composite(
     payload: CompositeIn,
+    request: Request,
     response: Response,
     current_user: dict = Depends(get_current_user),
 ):
@@ -84,8 +82,12 @@ async def create_composite(
 
     # Create a breeder record
     async with httpx.AsyncClient() as client:
+        headers = {
+            "X-Correlation-ID": get_correlation_id(),
+            "Authorization": f"{request.headers.get('Authorization')}",
+        }
         breeder_response = await client.post(
-            f"{BREEDER_SERVICE_URL}/", json=payload_dump["breeder"]
+            f"{BREEDER_SERVICE_URL}/", json=payload_dump["breeder"], headers=headers
         )
         breeder_id = str(breeder_response.json().get("id"))
 
@@ -94,7 +96,9 @@ async def create_composite(
             # Add breeder_id to the pet data
             pet["breeder_id"] = breeder_id
 
-            pet_response = await client.post(f"{PET_SERVICE_URL}/", json=pet)
+            pet_response = await client.post(
+                f"{PET_SERVICE_URL}/", json=pet, headers=headers
+            )
             pet_responses.append(pet_response.json())
 
     # Include Location header for the created resource
@@ -119,6 +123,7 @@ async def create_composite(
                     breeder_country=breeder_response_json.get("breeder_country"),
                     price_level=breeder_response_json.get("price_level"),
                     breeder_address=breeder_response_json.get("breeder_address"),
+                    email=breeder_response_json.get("email"),
                 )
             ],
             links=[
@@ -154,7 +159,7 @@ async def create_composite(
 
 
 @composites.get("/", response_model=CompositeOut)
-async def get_composites(params: CompositeFilterParams = Depends()):
+async def get_composites(request: Request, params: CompositeFilterParams = Depends()):
     """GET is implemented synchronously.
 
     - support operations on the sub-resources (GET)
@@ -183,7 +188,11 @@ async def get_composites(params: CompositeFilterParams = Depends()):
         if breeder_params:
             breeder_url += "?" + "&".join(breeder_params)
 
-        breeder_response = httpx.get(breeder_url)
+        headers = {
+            "X-Correlation-ID": get_correlation_id(),
+            "Authorization": f"{request.headers.get('Authorization')}",
+        }
+        breeder_response = httpx.get(breeder_url, headers=headers)
         breeder_data = breeder_response.json()
 
         ##### PET SERVICE #####
@@ -203,7 +212,7 @@ async def get_composites(params: CompositeFilterParams = Depends()):
         if pet_params:
             pet_url += "?" + "&".join(pet_params)
 
-        pet_response = httpx.get(pet_url)
+        pet_response = httpx.get(pet_url, headers=headers)
         pet_data = pet_response.json()
 
         return {
@@ -227,12 +236,10 @@ async def composite_get_breeder(id: str):
     )
 
     correlation_id = str(uuid.uuid4())
-
     async with PublisherClient(credentials=pubsub_credentials) as publisher:
         project_name = os.getenv("GCP_PROJECT_ID")
         request_topic = os.getenv("REQUEST_TOPIC")
         topic_name = f"projects/{project_name}/topics/{request_topic}"
-
         message_data = {
             "breeder_id": id,
             "correlation_id": correlation_id,
@@ -367,7 +374,7 @@ async def composite_get_customer(id: str):
 
 @composites.put("/both/{breeder_id}/{pet_id}/", response_model=None)
 async def update_breeder_and_pet(
-    breeder_id: str, pet_id: str, payload: CompositeUpdateBoth
+    breeder_id: str, pet_id: str, payload: CompositeUpdateBoth, request: Request
 ):
     """PUT is implemented asynchronously.
 
@@ -383,11 +390,16 @@ async def update_breeder_and_pet(
 
     # check if breeder and pet exists
     async with httpx.AsyncClient() as client:
-        breeder_exist = await client.get(f"{BREEDER_SERVICE_URL}/{breeder_id}/")
+        headers = {
+            "X-Correlation-ID": get_correlation_id(),
+            "Authorization": f"{request.headers.get('Authorization')}",
+        }
+
+        breeder_exist = await client.get(f"{BREEDER_SERVICE_URL}/{breeder_id}/", headers=headers)
         if breeder_exist.status_code != 200:
             raise HTTPException(status_code=404, detail="Breeder not found")
 
-        pet_exist = await client.get(f"{PET_SERVICE_URL}/{pet_id}/")
+        pet_exist = await client.get(f"{PET_SERVICE_URL}/{pet_id}/", headers=headers)
         if pet_exist.status_code != 200:
             raise HTTPException(status_code=404, detail="Pet not found")
 
@@ -395,12 +407,12 @@ async def update_breeder_and_pet(
     async with httpx.AsyncClient() as client:
         breeder_payload_dump = payload.model_dump(exclude_unset=True)["breeder"]
         breeder_response = await client.put(
-            f"{BREEDER_SERVICE_URL}/{breeder_id}/", json=breeder_payload_dump
+            f"{BREEDER_SERVICE_URL}/{breeder_id}/", json=breeder_payload_dump, headers=headers
         )
         pet_payload_dump = payload.model_dump(exclude_unset=True)["pet"]
         # Update pet
         pet_response = await client.put(
-            f"{PET_SERVICE_URL}/{pet_id}/", json=pet_payload_dump
+            f"{PET_SERVICE_URL}/{pet_id}/", json=pet_payload_dump, headers=headers
         )
 
     # Include link sections in the response body
@@ -414,6 +426,7 @@ async def update_breeder_and_pet(
                     breeder_country=breeder_response.json().get("breeder_country"),
                     price_level=breeder_response.json().get("price_level"),
                     breeder_address=breeder_response.json().get("breeder_address"),
+                    email=breeder_response.json().get("email"),
                     links=breeder_response.json().get("links"),
                 )
             ],
@@ -445,6 +458,7 @@ async def update_breeder_and_pet(
 # # Helper function to generate breeder URL
 # def generate_breeder_url(breeder_id: str):
 #     return f"{URL_PREFIX}/composites/{breeder_id}/"
+
 
 # Function to Fetch Information from Individual Services
 async def get_email_data(breeder_id: str, pet_id: str, customer_id: str):
@@ -489,11 +503,19 @@ async def get_email_data(breeder_id: str, pet_id: str, customer_id: str):
             return email_data
 
         except httpx.RequestError as e:
-            raise HTTPException(status_code=500, detail=f"Error fetching data from services: {str(e)}")
+            raise HTTPException(
+                status_code=500, detail=f"Error fetching data from services: {str(e)}"
+            )
         except httpx.HTTPStatusError as e:
-            raise HTTPException(status_code=e.response.status_code, detail=f"Service returned an error: {str(e)}")
+            raise HTTPException(
+                status_code=e.response.status_code,
+                detail=f"Service returned an error: {str(e)}",
+            )
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Unexpected error occurred: {str(e)}")
+            raise HTTPException(
+                status_code=500, detail=f"Unexpected error occurred: {str(e)}"
+            )
+
 
 # AWS Lambda settings
 LAMBDA_FUNCTION_NAME = os.getenv("LAMBDA_FUNCTION_NAME", "SendEmailFunction")
@@ -502,13 +524,12 @@ AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 # Initialize AWS Lambda client
 lambda_client = boto3.client("lambda", region_name=AWS_REGION)
 
+
 def invoke_lambda(email_data: dict):
     """Trigger the AWS Lambda function with the necessary payload using boto3."""
     try:
         # Wrap the email_data in a "body" key, as expected by the Lambda handler
-        payload = {
-            "body": json.dumps(email_data)  # Convert to JSON string
-        }
+        payload = {"body": json.dumps(email_data)}  # Convert to JSON string
 
         # Log the payload for debugging
 
@@ -525,10 +546,19 @@ def invoke_lambda(email_data: dict):
         # Check for error in Lambda response
         if response_payload.get("statusCode") != 200:
             error_message = response_payload.get("body", "Unknown error")
-            return {"status": "failure", "message": "Lambda function invocation failed", "details": error_message}
+            return {
+                "status": "failure",
+                "message": "Lambda function invocation failed",
+                "details": error_message,
+            }
         return response_payload
     except Exception as e:
-        return {"status": "failure", "message": "Error invoking Lambda function", "details": str(e)}
+        return {
+            "status": "failure",
+            "message": "Error invoking Lambda function",
+            "details": str(e),
+        }
+
 
 @composites.post("/webhook", status_code=200)
 async def handle_webhook(request: Request):
@@ -542,26 +572,46 @@ async def handle_webhook(request: Request):
         pet_id = event_data.get("pet_id")
         customer_id = event_data.get("consumer_id")
         if not all([breeder_id, pet_id, customer_id]):
-            raise HTTPException(status_code=400, detail="Missing required fields in webhook payload")
+            raise HTTPException(
+                status_code=400, detail="Missing required fields in webhook payload"
+            )
 
         # Fetch necessary email data
         email_data = await get_email_data(breeder_id, pet_id, customer_id)
 
         # Validate the email data
-        required_keys = ["breeder_email", "customer_name", "customer_email", "pet_name", "pet_id"]
-        missing_keys = [key for key in required_keys if key not in email_data or not email_data[key]]
+        required_keys = [
+            "breeder_email",
+            "customer_name",
+            "customer_email",
+            "pet_name",
+            "pet_id",
+        ]
+        missing_keys = [
+            key for key in required_keys if key not in email_data or not email_data[key]
+        ]
         if missing_keys:
-            raise HTTPException(status_code=400, detail=f"Invalid email data, missing keys: {missing_keys}")
-        
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid email data, missing keys: {missing_keys}",
+            )
+
         # Trigger AWS Lambda function
         try:
             lambda_response = invoke_lambda(email_data)
             return {"status": "success", "lambda_response": lambda_response}
         except Exception as e:
-            return {"status": "partial_success", "message": "Webhook processed, but Lambda invocation failed", "error": str(e)}
+            return {
+                "status": "partial_success",
+                "message": "Webhook processed, but Lambda invocation failed",
+                "error": str(e),
+            }
 
     except HTTPException as e:
         raise e
     except Exception as e:
-        return {"status": "failure", "message": "Internal server error occurred", "details": str(e)}
-  
+        return {
+            "status": "failure",
+            "message": "Internal server error occurred",
+            "details": str(e),
+        }
