@@ -14,6 +14,7 @@ class BreederIn(BaseModel):
     breeder_country: str
     price_level: str
     breeder_address: str
+    email: str
 
 
 class BreederOut(BreederIn):

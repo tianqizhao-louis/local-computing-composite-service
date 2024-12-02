@@ -23,6 +23,9 @@ boto3 = "^1.28.0"
 pyjwt = "^2.10.1"
 gcloud-aio-pubsub = "^6.0.1"
 google-cloud-workflows = "^1.15.1"
+loguru = "^0.7.2"
+python-logstash = "^0.4.8"
+pydantic-settings = "^2.6.1"
 
 
 [build-system]

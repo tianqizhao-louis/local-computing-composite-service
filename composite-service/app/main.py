@@ -48,7 +48,15 @@ app.add_middleware(
 )
 
 app.add_middleware(LoggingMiddleware)
-# app.middleware("http")(JWTMiddleware())
+app.add_middleware(
+    JWTMiddleware,
+    excluded_paths=[
+        "/api/v1/auth",
+        "/api/v1/composites/openapi.json",
+        "/api/v1/composites/docs",
+        "/api/v1/graphql",
+    ],
+)
 
 app.include_router(composites, prefix="/api/v1/composites", tags=["composites"])
 app.include_router(auth, prefix="/api/v1/auth", tags=["auth"])
