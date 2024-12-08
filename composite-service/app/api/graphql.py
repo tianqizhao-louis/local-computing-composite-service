@@ -98,15 +98,13 @@ class Query:
                 )
 
             # Map waitlist entries to pets
-            pet_waitlists = {}
+            pet_waitlists = {pet["id"]: [] for pet in pets_data}  # Initialize waitlist for each pet
             for entry in waitlist_data:
                 pet_id = entry.get("pet_id")
-                if pet_id:
-                    if pet_id not in pet_waitlists:
-                        pet_waitlists[pet_id] = []
+                if pet_id and pet_id in pet_waitlists:
                     pet_waitlists[pet_id].append(
                         WaitlistEntry(
-                            id=f"{breeder_id}_{pet_id}_{entry['id']}",
+                            id=entry["id"],
                             consumer=Customer(
                                 id=entry["id"], name=entry["name"], email=entry["email"]
                             ),
