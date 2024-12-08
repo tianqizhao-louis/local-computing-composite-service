@@ -482,25 +482,29 @@ async def update_breeder_and_pet(
 
 
 # Function to Fetch Information from Individual Services
-async def get_email_data(breeder_id: str, pet_id: str, customer_id: str):
+async def get_email_data(breeder_id: str, pet_id: str, customer_id: str, auth_header: str):
     """Fetch data from individual services asynchronously to construct the email payload."""
     async with httpx.AsyncClient() as client:
         try:
+            headers = {}
+            if auth_header:
+                headers["Authorization"] = auth_header  # Pass the auth header
+
             # Fetch breeder information
             breeder_url = f"{BREEDER_SERVICE_URL}/{breeder_id}/"
-            breeder_response = await client.get(breeder_url)
+            breeder_response = await client.get(breeder_url, headers=headers)
             breeder_response.raise_for_status()
             breeder_data = breeder_response.json()
 
             # Fetch pet information
             pet_url = f"{PET_SERVICE_URL}/{pet_id}/"
-            pet_response = await client.get(pet_url)
+            pet_response = await client.get(pet_url, headers=headers)
             pet_response.raise_for_status()
             pet_data = pet_response.json()
 
             # Fetch customer information
             customer_url = f"{CUSTOMER_SERVICE_URL}/{customer_id}/"
-            customer_response = await client.get(customer_url)
+            customer_response = await client.get(customer_url, headers=headers)
             customer_response.raise_for_status()
             customer_data = customer_response.json()
 
@@ -536,6 +540,7 @@ async def get_email_data(breeder_id: str, pet_id: str, customer_id: str):
             raise HTTPException(
                 status_code=500, detail=f"Unexpected error occurred: {str(e)}"
             )
+
 
 
 # AWS Lambda settings
@@ -596,9 +601,12 @@ async def handle_webhook(request: Request):
             raise HTTPException(
                 status_code=400, detail="Missing required fields in webhook payload"
             )
+        
+        auth_header = request.headers.get("Authorization")
 
         # Fetch necessary email data
-        email_data = await get_email_data(breeder_id, pet_id, customer_id)
+        email_data = await get_email_data(breeder_id, pet_id, customer_id, auth_header)
+        
 
         # Validate the email data
         required_keys = [
