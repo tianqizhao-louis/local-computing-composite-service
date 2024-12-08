@@ -8,6 +8,14 @@ from app.api.service import (
     CUSTOMER_SERVICE_URL,
 )
 
+# Function to get the Authorization header
+def get_auth_headers(info: Info) -> dict:
+    """Retrieve the Authorization header from the request context."""
+    auth_header = info.context.get("request").headers.get("Authorization")
+    if not auth_header:
+        raise Exception("Authorization header is required.")
+    return {"Authorization": auth_header}
+
 
 @strawberry.type
 class Customer:
@@ -50,16 +58,20 @@ class Breeder:
 @strawberry.type
 class Query:
     @strawberry.field
-    async def breeder_pets_with_waitlist(self, breeder_id: str) -> Optional[Breeder]:
+    async def breeder_pets_with_waitlist(self, breeder_id: str, info: Info) -> Optional[Breeder]:
+        headers = get_auth_headers(info)
+
         async with httpx.AsyncClient(follow_redirects=True) as client:
             # Fetch breeder information
-            breeder_response = await client.get(f"{BREEDER_SERVICE_URL}/{breeder_id}")
+            breeder_response = await client.get(
+                f"{BREEDER_SERVICE_URL}/{breeder_id}", headers=headers
+            )
             if breeder_response.status_code != 200:
                 raise Exception("Breeder not found")
             breeder_data = breeder_response.json()
 
             # Fetch all pets and filter by breeder_id
-            pets_response = await client.get(f"{PET_SERVICE_URL}")
+            pets_response = await client.get(f"{PET_SERVICE_URL}", headers=headers)
             try:
                 pets_response_data = pets_response.json()
                 pets_data = [
@@ -74,7 +86,7 @@ class Query:
 
             # Fetch waitlist data for the breeder
             waitlist_response = await client.get(
-                f"{CUSTOMER_SERVICE_URL}/breeder/{breeder_id}/waitlist"
+                f"{CUSTOMER_SERVICE_URL}/breeder/{breeder_id}/waitlist", headers=headers
             )
             try:
                 waitlist_data = waitlist_response.json()
@@ -131,3 +143,4 @@ class Query:
 
 
 schema = strawberry.Schema(Query)
+
