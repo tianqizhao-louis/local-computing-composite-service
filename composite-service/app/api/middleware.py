@@ -53,6 +53,9 @@ class JWTMiddleware(BaseHTTPMiddleware):
         self.excluded_paths = excluded_paths or []
 
     async def dispatch(self, request: Request, call_next):
+        if request.method == "OPTIONS":
+            response = await call_next(request)
+            return response
         # Exclude paths from middleware
         if any(request.url.path.startswith(path) for path in self.excluded_paths):
             return await call_next(request)
