@@ -31,12 +31,13 @@ from app.api.service import (
 )
 
 # from app.api.pubsub_manager import PubSubManager
-from gcloud.aio.pubsub import PublisherClient, SubscriberClient, PubsubMessage
 from google.cloud import workflows_v1
 from google.cloud.workflows import executions_v1
 from google.cloud.workflows.executions_v1 import Execution
 from google.cloud.workflows.executions_v1.types import executions
 from google.oauth2 import service_account
+from google.cloud.pubsub_v1 import PublisherClient, SubscriberClient
+
 
 from app.api.auth import get_current_user
 from app.api.middleware import get_correlation_id
@@ -230,64 +231,84 @@ async def get_composites(request: Request, params: CompositeFilterParams = Depen
 @composites.get("/breeders/id/{id}/")
 async def composite_get_breeder(id: str):
     """Pub/Sub implementation for composite service"""
+
     pubsub_credentials = service_account.Credentials.from_service_account_file(
         os.getenv("GOOGLE_APPLICATION_CREDENTIALS_PUBSUB"),
         scopes=["https://www.googleapis.com/auth/pubsub"],
     )
-
     correlation_id = str(uuid.uuid4())
-    async with PublisherClient(credentials=pubsub_credentials) as publisher:
+            
+    try:
+        publisher = PublisherClient(credentials=pubsub_credentials)
         project_name = os.getenv("GCP_PROJECT_ID")
         request_topic = os.getenv("REQUEST_TOPIC")
         topic_name = f"projects/{project_name}/topics/{request_topic}"
         message_data = {
-            "breeder_id": id,
+            "breeder_id": str(id),
             "correlation_id": correlation_id,
         }
         data = json.dumps(message_data).encode("utf-8")
-        message = PubsubMessage(data=data)
-        await publisher.publish(topic_name, [message])
 
-    async with SubscriberClient(credentials=pubsub_credentials) as subscriber:
-        response_sub = os.getenv("RESPONSE_SUBSCRIPTION_NAME")
-        subscription_name = f"projects/{project_name}/subscriptions/{response_sub}"
+        # Log for debugging
+        # print(f"Publishing to topic: {topic_name}")
+        # print(f"Message data: {message_data}")
 
-        timeout = 30  # seconds
-        try:
+        # Publish and await the result
+        future = publisher.publish(topic_name, data)
+        message_id = future.result()
+        print(f"Message published with ID: {message_id}")
+    except Exception as e:
+        print(f"Error while publishing: {e}")
+        raise HTTPException(status_code=500, detail="Failed to publish message")
+    
+    try:
+        print("About to initialize SubscriberClient")
+        # Use SubscriberClient as a synchronous context manager
+        with SubscriberClient(credentials=pubsub_credentials) as subscriber:
+            response_sub = os.getenv("RESPONSE_SUBSCRIPTION_NAME")
+            subscription_name = f"projects/{project_name}/subscriptions/{response_sub}"
+            print(f"Listening to subscription: {subscription_name}")
+
+            timeout = 30  # seconds
             start_time = asyncio.get_event_loop().time()
             while (asyncio.get_event_loop().time() - start_time) < timeout:
-                messages = await subscriber.pull(subscription_name, max_messages=10)
-                for msg in messages:
-                    message_data = json.loads(msg.data.decode("utf-8"))
-                    if message_data.get("correlation_id") == correlation_id:
-                        await subscriber.acknowledge(subscription_name, [msg.ack_id])
+                print(f"Polling messages from subscription: {subscription_name}")
+                try:
+                    # Pull messages from the subscription
+                    response = subscriber.pull(
+                        request={"subscription": subscription_name, "max_messages": 10}
+                    )
+                    print(f"Received {len(response.received_messages)} messages")
 
-                        # Check if the response contains an error
-                        if "error" in message_data:
-                            error_detail = message_data["error"]
-                            if "Breeder not found" in error_detail:
-                                raise HTTPException(
-                                    status_code=404, detail=error_detail
-                                )
-                            else:
-                                raise HTTPException(
-                                    status_code=500, detail=error_detail
-                                )
+                    for msg in response.received_messages:
+                        print(f"Raw message: {msg.message.data}")
+                        message_data = json.loads(msg.message.data.decode("utf-8"))
+                        print(f"Decoded message data: {message_data}")
 
-                        return message_data["breeder_data"]
+                        # Check for matching correlation_id
+                        if message_data.get("correlation_id") == correlation_id:
+                            print(f"Correlation ID matched: {correlation_id}")
+
+                            # Acknowledge the message
+                            subscriber.acknowledge(
+                                request={
+                                    "subscription": subscription_name,
+                                    "ack_ids": [msg.ack_id],
+                                }
+                            )
+                            return message_data["breeder_data"]
+
+                except Exception as e:
+                    print(f"Error during message polling: {e}")
 
                 await asyncio.sleep(1)
 
-            # Timeout reached
+            print("Timeout reached while waiting for response")
             raise HTTPException(status_code=504, detail="Response timed out")
+    except Exception as e:
+        print(f"Error initializing SubscriberClient or processing messages: {e}")
+        raise
 
-        except HTTPException as e:
-            # Propagate custom HTTP exceptions
-            raise e
-        except Exception as e:
-            # Log other errors and return a 500 status code
-            logging.error(f"Error while processing Pub/Sub messages: {e}")
-            raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @composites.get("/customers/id/{id}/")
@@ -461,25 +482,29 @@ async def update_breeder_and_pet(
 
 
 # Function to Fetch Information from Individual Services
-async def get_email_data(breeder_id: str, pet_id: str, customer_id: str):
+async def get_email_data(breeder_id: str, pet_id: str, customer_id: str, auth_header: str):
     """Fetch data from individual services asynchronously to construct the email payload."""
     async with httpx.AsyncClient() as client:
         try:
+            headers = {}
+            if auth_header:
+                headers["Authorization"] = auth_header  # Pass the auth header
+
             # Fetch breeder information
             breeder_url = f"{BREEDER_SERVICE_URL}/{breeder_id}/"
-            breeder_response = await client.get(breeder_url)
+            breeder_response = await client.get(breeder_url, headers=headers)
             breeder_response.raise_for_status()
             breeder_data = breeder_response.json()
 
             # Fetch pet information
             pet_url = f"{PET_SERVICE_URL}/{pet_id}/"
-            pet_response = await client.get(pet_url)
+            pet_response = await client.get(pet_url, headers=headers)
             pet_response.raise_for_status()
             pet_data = pet_response.json()
 
             # Fetch customer information
             customer_url = f"{CUSTOMER_SERVICE_URL}/{customer_id}/"
-            customer_response = await client.get(customer_url)
+            customer_response = await client.get(customer_url, headers=headers)
             customer_response.raise_for_status()
             customer_data = customer_response.json()
 
@@ -515,6 +540,7 @@ async def get_email_data(breeder_id: str, pet_id: str, customer_id: str):
             raise HTTPException(
                 status_code=500, detail=f"Unexpected error occurred: {str(e)}"
             )
+
 
 
 # AWS Lambda settings
@@ -575,9 +601,12 @@ async def handle_webhook(request: Request):
             raise HTTPException(
                 status_code=400, detail="Missing required fields in webhook payload"
             )
+        
+        auth_header = request.headers.get("Authorization")
 
         # Fetch necessary email data
-        email_data = await get_email_data(breeder_id, pet_id, customer_id)
+        email_data = await get_email_data(breeder_id, pet_id, customer_id, auth_header)
+        
 
         # Validate the email data
         required_keys = [

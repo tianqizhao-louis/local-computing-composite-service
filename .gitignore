@@ -167,3 +167,4 @@ cython_debug/
 test.db
 
 private-*.json
+composite-service/app/prime-victory-437119-p7-23a897575bfc.json

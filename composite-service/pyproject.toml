@@ -26,6 +26,7 @@ google-cloud-workflows = "^1.15.1"
 loguru = "^0.7.2"
 python-logstash = "^0.4.8"
 pydantic-settings = "^2.6.1"
+google-cloud-pubsub = "^2.15.0"
 
 
 [build-system]

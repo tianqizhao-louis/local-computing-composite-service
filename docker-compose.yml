@@ -20,8 +20,8 @@ services:
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}
-      - GOOGLE_APPLICATION_CREDENTIALS_PUBSUB=/app/app/private-pubsub.json
-      - GOOGLE_APPLICATION_CREDENTIALS_WORKFLOW=/app/app/private-workflow.json
+      - GOOGLE_APPLICATION_CREDENTIALS_PUBSUB=./app/private-pubsub.json
+      - GOOGLE_APPLICATION_CREDENTIALS_WORKFLOW=/app/private-workflow.json
       - GCP_PROJECT_ID=prime-victory-437119-p7
       - REQUEST_TOPIC=breeder-info-request
       - RESPONSE_TOPIC=breeder-info-response
@@ -44,7 +44,7 @@ services:
     image: nginx:latest
     container_name: composite_nginx
     ports:
-      - "8084:8080"
+      - '8084:8080'
     volumes:
       - ./nginx_config.conf:/etc/nginx/conf.d/default.conf
     depends_on:
