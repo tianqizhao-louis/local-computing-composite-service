@@ -64,14 +64,14 @@ class Query:
         async with httpx.AsyncClient(follow_redirects=True) as client:
             # Fetch breeder information
             breeder_response = await client.get(
-                f"{BREEDER_SERVICE_URL}/{breeder_id}", headers=headers
+                f"{BREEDER_SERVICE_URL}/{breeder_id}/", headers=headers
             )
             if breeder_response.status_code != 200:
                 raise Exception("Breeder not found")
             breeder_data = breeder_response.json()
 
             # Fetch all pets and filter by breeder_id
-            pets_response = await client.get(f"{PET_SERVICE_URL}", headers=headers)
+            pets_response = await client.get(f"{PET_SERVICE_URL}/", headers=headers)
             try:
                 pets_response_data = pets_response.json()
                 pets_data = [
