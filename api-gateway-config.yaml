@@ -2,54 +2,675 @@ swagger: "2.0"
 info:
   title: "Paws and Tails API"
   version: "1.0.0"
+  description: "API Gateway configuration for Paws and Tails microservices"
 host: "paws.apigateway.prime-victory-437119-p7.cloud.goog"
 schemes:
   - https
+securityDefinitions:
+  api_key:
+    type: "apiKey"
+    name: "key"
+    in: "query"
+    description: "API key for authentication"
+security:
+  - api_key: []
+x-google-endpoints:
+  - name: "paws.apigateway.prime-victory-437119-p7.cloud.goog"
+    allowCors: true
 paths:
-  "/composite":
+  # Documentation Routes (No Authentication Required)
+  "/composites/docs":
+    get:
+      description: "Composite Service Documentation"
+      operationId: "composite-doc"
+      x-google-backend:
+        address: https://composite-661348528801.us-central1.run.app/api/v1/composites/docs
+      security: []
+      responses:
+        200:
+          description: "Success"
+
+  "/breeders/docs":
+    get:
+      description: "Breeder Service Documentation"
+      operationId: "breeder-doc"
+      x-google-backend:
+        address: https://breeder-661348528801.us-central1.run.app/api/v1/breeders/docs
+      security: []
+      responses:
+        200:
+          description: "Success"
+
+  # "/pets/doc":
+  #   get:
+  #     description: "Pet Service Documentation"
+  #     operationId: "pet-doc"
+  #     x-google-backend:
+  #       address: http://34.136.146.98:8082/api/v1/pets/doc
+  #     security: []
+  #     responses:
+  #       200:
+  #         description: "Success"
+
+  # "/customers/doc":
+  #   get:
+  #     description: "Customer Service Documentation"
+  #     operationId: "customer-doc"
+  #     x-google-backend:
+  #       address: http://34.70.67.71:8081/api/v1/customers/doc
+  #     security: []
+  #     responses:
+  #       200:
+  #         description: "Success"
+
+  # Composite Service Routes
+  "/composites":
     get:
       description: "Composite Service"
-      operationId: "composite"
+      operationId: "get-composite"
       x-google-backend:
         address: https://composite-661348528801.us-central1.run.app/api/v1/composites
       responses:
         200:
           description: "Success"
-  "/composite/openapi.json":
+    post:
+      description: "Create a new composite"
+      operationId: "create-composite"
+      x-google-backend:
+        address: https://composite-661348528801.us-central1.run.app/api/v1/composites
+      responses:
+        201:
+          description: "Success"
+
+  "/composites/openapi.json":
     get:
       description: "Composite Service OpenAPI"
       operationId: "composite-openapi"
       x-google-backend:
         address: https://composite-661348528801.us-central1.run.app/api/v1/composites/openapi.json
+      security: []
       responses:
         200:
           description: "Success"
-    # post:
-    #   x-google-backend:
-    #     address: https://CLOUD_RUN_URL
-    #     jwt_audience: CLOUD_RUN_URL
-    #   security:
-    #     - bearerAuth: []
-    #   responses:
-    #     200:
-    #       description: "Cloud Run POST Response"
-  # /compute:
+
+  "/composites/breeders/id/{id}":
+    get:
+      description: "Get breeder information using Pub/Sub implementation"
+      operationId: "composite-get-breeder"
+      x-google-backend:
+        address: https://composite-661348528801.us-central1.run.app/api/v1/composites/breeders/id/{id}
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          type: "string"
+      responses:
+        200:
+          description: "Success"
+
+  "/composites/customers/id/{id}":
+    get:
+      description: "Get customer information using Workflow implementation"
+      operationId: "composite-get-customer"
+      x-google-backend:
+        address: https://composite-661348528801.us-central1.run.app/api/v1/composites/customers/id/{id}
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          type: "string"
+      responses:
+        200:
+          description: "Success"
+
+  "/composites/both/{breeder_id}/{pet_id}":
+    put:
+      description: "Update both breeder and pet information"
+      operationId: "update-breeder-and-pet"
+      x-google-backend:
+        address: https://composite-661348528801.us-central1.run.app/api/v1/composites/both/{breeder_id}/{pet_id}
+      parameters:
+        - name: "breeder_id"
+          in: "path"
+          required: true
+          type: "string"
+        - name: "pet_id"
+          in: "path"
+          required: true
+          type: "string"
+      responses:
+        200:
+          description: "Success"
+
+  "/composites/webhook":
+    post:
+      description: "Handle webhook from customer server"
+      operationId: "handle-webhook"
+      x-google-backend:
+        address: https://composite-661348528801.us-central1.run.app/api/v1/composites/webhook
+      responses:
+        200:
+          description: "Success"
+
+  # Composite Auth Routes
+  "/composites-auth/refresh":
+    post:
+      description: "Refresh the access token"
+      operationId: "refresh-composite-auth-token"
+      x-google-backend:
+        address: https://composite-661348528801.us-central1.run.app/api/v1/auth/refresh
+      security: []
+      responses:
+        200:
+          description: "Success"
+
+  "/composites-auth/login":
+    post:
+      description: "Login to the composite service"
+      operationId: "login-composite"
+      x-google-backend:
+        address: https://composite-661348528801.us-central1.run.app/api/v1/auth/login
+      security: []
+      responses:
+        200:
+          description: "Success"
+
+  "/composites-auth/protected":
+    get:
+      description: "Protected Branch Composite"
+      operationId: "get-protected-composite"
+      x-google-backend:
+        address: https://composite-661348528801.us-central1.run.app/api/v1/auth/protected
+      responses:
+        200:
+          description: "Success"
+
+  # Breeder Service Routes
+  "/breeders":
+    get:
+      description: "Get all breeders"
+      operationId: "get-breeders"
+      x-google-backend:
+        address: https://breeder-661348528801.us-central1.run.app/api/v1/breeders
+      responses:
+        200:
+          description: "Success"
+    post:
+      description: "Create a new breeder"
+      operationId: "create-breeder"
+      x-google-backend:
+        address: https://breeder-661348528801.us-central1.run.app/api/v1/breeders
+      responses:
+        201:
+          description: "Success"
+
+  "/breeders/delay":
+    post:
+      description: "Create a breeder with delayed processing"
+      operationId: "create-breeder-delay"
+      x-google-backend:
+        address: https://breeder-661348528801.us-central1.run.app/api/v1/breeders/delay
+      responses:
+        202:
+          description: "Success"
+
+  "/breeders/task-status/{task_id}":
+    get:
+      description: "Get status of a delayed breeder creation task"
+      operationId: "get-task-status"
+      x-google-backend:
+        address: https://breeder-661348528801.us-central1.run.app/api/v1/breeders/task-status/{task_id}
+      parameters:
+        - name: "task_id"
+          in: "path"
+          required: true
+          type: "string"
+      responses:
+        200:
+          description: "Success"
+
+  "/breeders/{id}":
+    get:
+      description: "Get a specific breeder"
+      operationId: "get-breeder"
+      x-google-backend:
+        address: https://breeder-661348528801.us-central1.run.app/api/v1/breeders/{id}
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          type: "string"
+      responses:
+        200:
+          description: "Success"
+    put:
+      description: "Update a breeder"
+      operationId: "update-breeder"
+      x-google-backend:
+        address: https://breeder-661348528801.us-central1.run.app/api/v1/breeders/{id}
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          type: "string"
+      responses:
+        200:
+          description: "Success"
+    delete:
+      description: "Delete a breeder"
+      operationId: "delete-breeder"
+      x-google-backend:
+        address: https://breeder-661348528801.us-central1.run.app/api/v1/breeders/{id}
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          type: "string"
+      responses:
+        200:
+          description: "Success"
+
+  "/breeders/{breeder_id}/pets":
+    get:
+      description: "Get all pets for a specific breeder"
+      operationId: "get-pets-for-breeder"
+      x-google-backend:
+        address: https://breeder-661348528801.us-central1.run.app/api/v1/breeders/{breeder_id}/pets
+      parameters:
+        - name: "breeder_id"
+          in: "path"
+          required: true
+          type: "string"
+      responses:
+        200:
+          description: "Success"
+    post:
+      description: "Add a pet to a breeder"
+      operationId: "add-pet-to-breeder"
+      x-google-backend:
+        address: https://breeder-661348528801.us-central1.run.app/api/v1/breeders/{breeder_id}/pets
+      parameters:
+        - name: "breeder_id"
+          in: "path"
+          required: true
+          type: "string"
+      responses:
+        201:
+          description: "Success"
+
+  "/breeders/email/{email}":
+    get:
+      description: "Get a breeder by email"
+      operationId: "get-breeder-by-email"
+      x-google-backend:
+        address: https://breeder-661348528801.us-central1.run.app/api/v1/breeders/email/{email}
+      parameters:
+        - name: "email"
+          in: "path"
+          required: true
+          type: "string"
+      responses:
+        200:
+          description: "Success"
+
+  "/breeders/delete/all":
+    delete:
+      description: "Delete all breeders"
+      operationId: "delete-all-breeders"
+      x-google-backend:
+        address: https://breeder-661348528801.us-central1.run.app/api/v1/breeders/delete/all
+      responses:
+        200:
+          description: "Success"
+
+  # Breeder Auth Routes
+  "/breeder-auth/login":
+    post:
+      description: "Login to breeder service"
+      operationId: "breeder-login"
+      x-google-backend:
+        address: https://breeder-661348528801.us-central1.run.app/api/v1/auth/login
+      security: []
+      responses:
+        200:
+          description: "Success"
+
+  "/breeder-auth/refresh":
+    post:
+      description: "Refresh breeder authentication token"
+      operationId: "refresh-breeder-token"
+      x-google-backend:
+        address: https://breeder-661348528801.us-central1.run.app/api/v1/auth/refresh
+      security: []
+      responses:
+        200:
+          description: "Success"
+
+  "/breeder-auth/protected":
+    get:
+      description: "Protected route to test breeder JWT authentication"
+      operationId: "test-breeder-auth"
+      x-google-backend:
+        address: https://breeder-661348528801.us-central1.run.app/api/v1/auth/protected
+      responses:
+        200:
+          description: "Success"
+
+  # # Pet Service Routes
+  # "/pets":
   #   get:
+  #     description: "Get all pets"
+  #     operationId: "get-pets"
   #     x-google-backend:
-  #       address: http://STATIC_IP_OF_COMPUTE_ENGINE:8000
+  #       address: http://34.136.146.98:8082/api/v1/pets
   #     responses:
   #       200:
-  #         description: "Compute Engine GET Response"
+  #         description: "Success"
   #   post:
+  #     description: "Create a new pet"
+  #     operationId: "create-pet"
   #     x-google-backend:
-  #       address: http://STATIC_IP_OF_COMPUTE_ENGINE:8000
-  #     security:
-  #       - bearerAuth: []
+  #       address: http://34.136.146.98:8082/api/v1/pets
+  #     responses:
+  #       201:
+  #         description: "Success"
+
+  # "/pets/{id}":
+  #   get:
+  #     description: "Get a specific pet"
+  #     operationId: "get-pet"
+  #     x-google-backend:
+  #       address: http://34.136.146.98:8082/api/v1/pets/{id}
+  #     parameters:
+  #       - name: "id"
+  #         in: "path"
+  #         required: true
+  #         type: "string"
   #     responses:
   #       200:
-  #         description: "Compute Engine POST Response"
-# securityDefinitions:
-#   bearerAuth:
-#     type: apiKey
-#     name: Authorization
-#     in: header
+  #         description: "Success"
+  #   put:
+  #     description: "Update a pet"
+  #     operationId: "update-pet"
+  #     x-google-backend:
+  #       address: http://34.136.146.98:8082/api/v1/pets/{id}
+  #     parameters:
+  #       - name: "id"
+  #         in: "path"
+  #         required: true
+  #         type: "string"
+  #     responses:
+  #       200:
+  #         description: "Success"
+  #   delete:
+  #     description: "Delete a pet"
+  #     operationId: "delete-pet"
+  #     x-google-backend:
+  #       address: http://34.136.146.98:8082/api/v1/pets/{id}
+  #     parameters:
+  #       - name: "id"
+  #         in: "path"
+  #         required: true
+  #         type: "string"
+  #     responses:
+  #       200:
+  #         description: "Success"
+
+  # "/pets/delete/all":
+  #   delete:
+  #     description: "Delete all pets"
+  #     operationId: "delete-all-pets"
+  #     x-google-backend:
+  #       address: http://34.136.146.98:8082/api/v1/pets/delete/all
+  #     responses:
+  #       200:
+  #         description: "Success"
+
+  # "/pets/breeder/{breeder_id}":
+  #   get:
+  #     description: "Get all pets for a specific breeder"
+  #     operationId: "get-pets-by-breeder"
+  #     x-google-backend:
+  #       address: http://34.136.146.98:8082/api/v1/pets/breeder/{breeder_id}
+  #     parameters:
+  #       - name: "breeder_id"
+  #         in: "path"
+  #         required: true
+  #         type: "string"
+  #     responses:
+  #       200:
+  #         description: "Success"
+
+  # # Pet Auth Routes
+  # "/pet-auth/login":
+  #   post:
+  #     description: "Login to pet service"
+  #     operationId: "pet-login"
+  #     x-google-backend:
+  #       address: http://34.136.146.98:8082/api/v1/auth/login
+  #     security: []
+  #     responses:
+  #       200:
+  #         description: "Success"
+
+  # "/pet-auth/refresh":
+  #   post:
+  #     description: "Refresh pet authentication token"
+  #     operationId: "refresh-pet-token"
+  #     x-google-backend:
+  #       address: http://34.136.146.98:8082/api/v1/auth/refresh
+  #     security: []
+  #     responses:
+  #       200:
+  #         description: "Success"
+
+  # "/pet-auth/protected":
+  #   get:
+  #     description: "Protected route to test pet JWT authentication"
+  #     operationId: "test-pet-auth"
+  #     x-google-backend:
+  #       address: http://34.136.146.98:8082/api/v1/auth/protected
+  #     responses:
+  #       200:
+  #         description: "Success"
+
+  # # Customer Service Routes
+  # "/customers":
+  #   get:
+  #     description: "Get all customers"
+  #     operationId: "get-customers"
+  #     x-google-backend:
+  #       address: http://34.70.67.71:8081/api/v1/customers
+  #     responses:
+  #       200:
+  #         description: "Success"
+  #   post:
+  #     description: "Create a new customer"
+  #     operationId: "create-customer"
+  #     x-google-backend:
+  #       address: http://34.70.67.71:8081/api/v1/customers
+  #     responses:
+  #       201:
+  #         description: "Success"
+
+  # "/customers/{id}":
+  #   get:
+  #     description: "Get a specific customer"
+  #     operationId: "get-customer"
+  #     x-google-backend:
+  #       address: http://34.70.67.71:8081/api/v1/customers/{id}
+  #     parameters:
+  #       - name: "id"
+  #         in: "path"
+  #         required: true
+  #         type: "string"
+  #     responses:
+  #       200:
+  #         description: "Success"
+  #   put:
+  #     description: "Update a customer"
+  #     operationId: "update-customer"
+  #     x-google-backend:
+  #       address: http://34.70.67.71:8081/api/v1/customers/{id}
+  #     parameters:
+  #       - name: "id"
+  #         in: "path"
+  #         required: true
+  #         type: "string"
+  #     responses:
+  #       200:
+  #         description: "Success"
+  #   delete:
+  #     description: "Delete a customer"
+  #     operationId: "delete-customer"
+  #     x-google-backend:
+  #       address: http://34.70.67.71:8081/api/v1/customers/{id}
+  #     parameters:
+  #       - name: "id"
+  #         in: "path"
+  #         required: true
+  #         type: "string"
+  #     responses:
+  #       200:
+  #         description: "Success"
+
+  # "/customers/get/get/{id}":
+  #   get:
+  #     description: "Get a specific customer by ID (alternative endpoint)"
+  #     operationId: "get-customer-get-id"
+  #     x-google-backend:
+  #       address: http://34.70.67.71:8081/api/v1/customers/get/get/{id}
+  #     parameters:
+  #       - name: "id"
+  #         in: "path"
+  #         required: true
+  #         type: "string"
+  #     responses:
+  #       200:
+  #         description: "Success"
+
+  # "/customers/delete/all":
+  #   delete:
+  #     description: "Delete all customers"
+  #     operationId: "delete-all-customers"
+  #     x-google-backend:
+  #       address: http://34.70.67.71:8081/api/v1/customers/delete/all
+  #     responses:
+  #       200:
+  #         description: "Success"
+
+  # "/customers/email/{email}":
+  #   get:
+  #     description: "Get a customer by email"
+  #     operationId: "get-customer-by-email"
+  #     x-google-backend:
+  #       address: http://34.70.67.71:8081/api/v1/customers/email/{email}
+  #     parameters:
+  #       - name: "email"
+  #         in: "path"
+  #         required: true
+  #         type: "string"
+  #     responses:
+  #       200:
+  #         description: "Success"
+
+  # "/customers/{customer_id}/waitlist":
+  #   get:
+  #     description: "Get customer's waitlist entries"
+  #     operationId: "get-customer-waitlist"
+  #     x-google-backend:
+  #       address: http://34.70.67.71:8081/api/v1/customers/{customer_id}/waitlist
+  #     parameters:
+  #       - name: "customer_id"
+  #         in: "path"
+  #         required: true
+  #         type: "string"
+  #     responses:
+  #       200:
+  #         description: "Success"
+  #   post:
+  #     description: "Add customer to waitlist"
+  #     operationId: "add-to-waitlist"
+  #     x-google-backend:
+  #       address: http://34.70.67.71:8081/api/v1/customers/{customer_id}/waitlist
+  #     parameters:
+  #       - name: "customer_id"
+  #         in: "path"
+  #         required: true
+  #         type: "string"
+  #     responses:
+  #       201:
+  #         description: "Success"
+
+  # "/customers/breeder/{breeder_id}/waitlist":
+  #   get:
+  #     description: "Get waitlist entries for a breeder"
+  #     operationId: "get-waitlist-for-breeder"
+  #     x-google-backend:
+  #       address: http://34.70.67.71:8081/api/v1/customers/breeder/{breeder_id}/waitlist
+  #     parameters:
+  #       - name: "breeder_id"
+  #         in: "path"
+  #         required: true
+  #         type: "string"
+  #     responses:
+  #       200:
+  #         description: "Success"
+
+  # "/customers/waitlist/{waitlist_entry_id}":
+  #   delete:
+  #     description: "Remove an entry from waitlist"
+  #     operationId: "remove-from-waitlist"
+  #     x-google-backend:
+  #       address: http://34.70.67.71:8081/api/v1/customers/waitlist/{waitlist_entry_id}
+  #     parameters:
+  #       - name: "waitlist_entry_id"
+  #         in: "path"
+  #         required: true
+  #         type: "string"
+  #     responses:
+  #       200:
+  #         description: "Success"
+
+  # "/customers/waitlist/delete/all":
+  #   delete:
+  #     description: "Delete all waitlist entries"
+  #     operationId: "delete-all-waitlist-entries"
+  #     x-google-backend:
+  #       address: http://34.70.67.71:8081/api/v1/customers/waitlist/delete/all
+  #     responses:
+  #       200:
+  #         description: "Success"
+
+  # # Customer Auth Routes
+  # "/customer-auth/login":
+  #   post:
+  #     description: "Login to customer service"
+  #     operationId: "customer-login"
+  #     x-google-backend:
+  #       address: http://34.70.67.71:8081/api/v1/auth/login
+  #     security: []
+  #     responses:
+  #       200:
+  #         description: "Success"
+
+  # "/customer-auth/refresh":
+  #   post:
+  #     description: "Refresh customer authentication token"
+  #     operationId: "refresh-customer-token"
+  #     x-google-backend:
+  #       address: http://34.70.67.71:8081/api/v1/auth/refresh
+  #     security: []
+  #     responses:
+  #       200:
+  #         description: "Success"
+
+  # "/customer-auth/protected":
+  #   get:
+  #     description: "Protected route to test customer JWT authentication"
+  #     operationId: "test-customer-auth"
+  #     x-google-backend:
+  #       address: http://34.70.67.71:8081/api/v1/auth/protected
+  #     responses:
+  #       200:
+  #         description: "Success"
